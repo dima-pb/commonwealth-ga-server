@@ -152,7 +152,7 @@ bool Inventory::IsHandDevice(int slot) {
 // base. For props the engine doesn't case-handle (e.g. prop 388 protection),
 // ApplyProperty's default branch is just a bNetDirty + OnPropertyChanged
 // ProcessEvent — safe.
-typedef void(__fastcall* InventoryApplyPropertyFn)(ATgPawn*, void* /*edx*/, UTgProperty*);
+typedef void(__fastcall* InventoryApplyPropertyFn)(ATgPawn*, void* /*edx*/, UTgProperty*, int /*flag, native callers pass 0*/);
 static const InventoryApplyPropertyFn InventoryApplyPropertyNative = (InventoryApplyPropertyFn)0x109cc7d0;
 
 // ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ void Inventory::ApplyDeviceEquipEffects(ATgPawn* Pawn, int deviceId) {
 		// regular SetProperty path used in skill/armor flows, not by raw
 		// device equip effects, so they're already covered.
 		if (propId == 255 /* POWERPOOL_MAX */) {
-			InventoryApplyPropertyNative(Pawn, /*edx=*/nullptr, prop);
+			InventoryApplyPropertyNative(Pawn, /*edx=*/nullptr, prop, 0);
 		}
 		Logger::Log("inventory",
 			"ApplyDeviceEquipEffects: pawn=0x%p device=%d propId=%d cm=%d base=%.2f  m_fRaw %.2f -> %.2f\n",
@@ -875,7 +875,7 @@ static void RemoveDeviceEquipEffects_impl(ATgPawn* Pawn, int deviceId) {
 		// Mirror Apply's narrow scope: only fan out POWERPOOL_MAX. See the
 		// matching block in ApplyDeviceEquipEffects for why this is gated.
 		if (propId == 255 /* POWERPOOL_MAX */) {
-			InventoryApplyPropertyNative(Pawn, /*edx=*/nullptr, prop);
+			InventoryApplyPropertyNative(Pawn, /*edx=*/nullptr, prop, 0);
 		}
 		Logger::Log("inventory",
 			"RemoveDeviceEquipEffects: pawn=0x%p device=%d propId=%d cm=%d base=%.2f  m_fRaw %.2f -> %.2f\n",

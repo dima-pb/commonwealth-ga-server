@@ -2121,7 +2121,8 @@ void __fastcall UObject__ProcessEvent::Call(UObject* Object, void* edx, UFunctio
 					Logger::GetTime(), actName.c_str());
 				// Null originator is a designed-in path: the intact native
 				// picks a random player pawn as the alarm target.
-				TgGame__ActivateAlarm::Call(Game, nullptr, nullptr, 0, 0, 0, 0);
+				FString sTypeCode;
+				TgGame__ActivateAlarm::Call(Game, nullptr, nullptr, 0, &sTypeCode);
 			}
 		}
 		// TgSeqAct_EndMission: same disconnection — the original server native
