@@ -577,6 +577,8 @@ VERSION_OUT=$(OUT_DIR)/version.dll
 DINPUT8_OUT=$(OUT_DIR)/dinput8.dll
 VERSION_CLIENT_OUT=$(OUT_CLIENT_DIR)/version.dll
 
+.DEFAULT_GOAL := all
+
 obj/pch.hpp.gch: src/pch.hpp
 	i686-w64-mingw32-g++ -std=c++17 -D_WIN32_WINNT=0x0601 -I. -I./lib/detours -I./lib/asio-1.34.2/include -x c++-header src/pch.hpp -o obj/pch.hpp.gch
 
@@ -680,7 +682,7 @@ CS_CPP_SOURCES= \
 
 CS_SOURCES=$(CS_CPP_SOURCES)
 
-CS_CXXFLAGS=-std=c++17 -pthread -I. -I./lib/asio-1.34.2/include -I./lib/sqlite3 -DASIO_STANDALONE -O2 -Wall
+CS_CXXFLAGS=-std=c++17 -pthread -I. -I./lib/asio-1.34.2/include -I./lib/sqlite3 -DASIO_STANDALONE -DASIO_DISABLE_SERIAL_PORT -O2 -Wall
 # MinGW builds crash in Asio socket service construction with -O1/-O2.
 CS_CXXFLAGS_WIN=$(filter-out -O2,$(CS_CXXFLAGS)) -O0 -D_WIN32_WINNT=0x0601
 CS_CFLAGS_SQLITE=-O2 -I./lib/sqlite3
