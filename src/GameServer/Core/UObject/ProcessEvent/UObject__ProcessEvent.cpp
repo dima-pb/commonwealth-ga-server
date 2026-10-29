@@ -9,6 +9,7 @@
 #include "src/GameServer/TgGame/TgTeamBeaconManager/BeaconCarryReaper/BeaconCarryReaper.hpp"
 #include "src/GameServer/Armor/Armor.hpp"
 #include "src/GameServer/Inventory/Inventory.hpp"
+#include "src/GameServer/Inventory/ConsumableReaper/ConsumableReaper.hpp"
 #include "src/GameServer/Stats/MatchStats.hpp"
 #include "src/GameServer/Combat/MissionAlerts/SendAlert.hpp"
 #include "src/GameServer/Utils/ObjectClassCache/ObjectClassCache.hpp"
@@ -1494,6 +1495,15 @@ void __fastcall UObject__ProcessEvent::Call(UObject* Object, void* edx, UFunctio
 			}
 		}
 		DoCatchAll();
+		// Consumable (ES13, flag set in Inventory::Equip): leave the slot shortly
+		// after this fire — see ConsumableReaper for why not at EndState.
+		{
+			ATgDevice* Dev = (ATgDevice*)Object;
+			if (Dev && Dev->r_bConsumedOnUse && Dev->Instigator &&
+			    ObjectClassCache::ClassNameContains(Dev->Instigator, "TgPawn")) {
+				ConsumableReaper::Arm((ATgPawn*)Dev->Instigator, Dev);
+			}
+		}
 		break;
 	}
 

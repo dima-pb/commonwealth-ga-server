@@ -483,6 +483,20 @@ void TcpSession::DeliverGameEvent(const std::string& session_guid, const nlohman
             pawn_id, (int)items.size());
         session->send_loadout_inventory_response(pawn_id, items);
     }
+    else if (subtype == "consumable_unequip") {
+        // A used ES13 consumable: drop it from the saved loadout and move just
+        // that record to the bag on the client. The inventory row stays, so the
+        // client's record count keeps matching r_ItemCount.
+        int     pawn_id      = j.value("pawn_id", 0);
+        int     inventory_id = j.value("inventory_id", 0);
+        int64_t character_id = session->selected_character_id_;
+        Logger::Log("ipc", "[TcpSession] DeliverGameEvent: consumable_unequip pawn=%d char=%lld inv=%d\n",
+            pawn_id, (long long)character_id, inventory_id);
+        if (pawn_id != 0 && character_id != 0 && inventory_id != 0) {
+            PlayerSessionStore::UnequipConsumable(character_id, inventory_id);
+            session->send_inventory_record_to_bag(pawn_id, character_id, inventory_id);
+        }
+    }
     else if (subtype == "possess_restore_inventory") {
         int     pawn_id      = j.value("pawn_id", 0);
         int64_t character_id = j.value("character_id", (int64_t)0);
@@ -3291,7 +3305,8 @@ void TcpSession::send_inventory_response(int nPawnId, int64_t character_id) {
 	for (const auto& d : devices) {
 		const bool itemRow       = d.item_id > 0;
 		const bool isArmor       = itemRow && !d.mods.empty();
-		const int marshalItemId  = itemRow ? d.item_id : d.device_id;
+		const int consumableItem = itemRow ? 0 : PlayerSessionStore::GetConsumableItemIdForDevice(d.device_id);
+		const int marshalItemId  = itemRow ? d.item_id : (consumableItem ? consumableItem : d.device_id);
 		const int marshalDeviceField = itemRow ? 0 : d.inventory_id;
 		const int blueprintId    =
 			isArmor                    ? ArmorLoadouts::kUniversalArmorBlueprintId :
@@ -3354,39 +3369,7 @@ void TcpSession::send_inventory_response(int nPawnId, int64_t character_id) {
 	// See top-of-function comment for why DEVICE_ID=0 is the don't-resubmit
 	// gate.
 	for (const auto& row : bag) {
-		const bool   rowIsItem     = row.item_id > 0;
-		const bool   rowIsArmor    = rowIsItem && !row.mods.empty();
-		const int    marshalItemId = rowIsItem ? row.item_id : row.device_id;
-		const int    blueprintId   =
-			rowIsArmor                    ? ArmorLoadouts::kUniversalArmorBlueprintId :
-			(rowIsItem || row.mods.empty()) ? 0
-			                                : PlayerSessionStore::GetBlueprintIdForDevice(row.device_id, row.oc);
-
-		append(response, 0x0D, 0x00);   // 13 fields
-
-		Write4B(response, GA_T::INV_REPLICATION_STATE, 0x1);
-		Write4B(response, GA_T::ITEM_ID, marshalItemId);
-		Write4B(response, GA_T::INVENTORY_ID, row.inventory_id);
-		Write4B(response, GA_T::BLUEPRINT_ID, blueprintId);
-		Write4B(response, GA_T::CRAFTED_QUALITY_VALUE_ID, row.quality);
-		Write4B(response, GA_T::DURABILITY, 100);
-		WriteDouble(response, GA_T::ACQUIRE_DATETIME, 1700000000.0);
-		WriteString(response, GA_T::BOUND_FLAG, "T");
-		Write4B(response, GA_T::LOCATION_VALUE_ID, 370);   // ON_HAND
-		Write4B(response, GA_T::INSTANCE_COUNT, 0x1);
-		WriteString(response, GA_T::ACTIVE_FLAG, "F");
-		Write4B(response, GA_T::DEVICE_ID, 0);
-
-		std::vector<int> effectGroups = row.mods;
-		if (effectGroups.empty()) effectGroups.push_back(0);
-
-		append(response, GA_T::DATA_SET_INVENTORY_STATE & 0xFF, GA_T::DATA_SET_INVENTORY_STATE >> 8);
-		append(response, (uint8_t)(effectGroups.size() & 0xFF), (uint8_t)(effectGroups.size() >> 8));
-		for (int egid : effectGroups) {
-			append(response, 0x02, 0x00);
-			Write4B(response, GA_T::INVENTORY_ID, row.inventory_id);
-			Write4B(response, GA_T::EFFECT_GROUP_ID, egid);
-		}
+		AppendBagRecord(response, row);
 	}
 
 	// --- Component block. Same 13-field bag shape; INSTANCE_COUNT carries the
@@ -3429,6 +3412,76 @@ void TcpSession::AppendComponentRecord(std::vector<uint8_t>& response,
 		append(response, 0x02, 0x00);
 		Write4B(response, GA_T::INVENTORY_ID, synthetic_inv_id);
 		Write4B(response, GA_T::EFFECT_GROUP_ID, 0);
+}
+
+// One bag-form record. LOCATION_VALUE_ID=370 (ON_HAND), DEVICE_ID=0,
+// ACTIVE_FLAG=F and no DATA_SET_CHARACTER_PROFILES (not bound to a slot).
+void TcpSession::AppendBagRecord(std::vector<uint8_t>& response, const InventoryRow& row) {
+	const bool   rowIsItem     = row.item_id > 0;
+	const bool   rowIsArmor    = rowIsItem && !row.mods.empty();
+	const int    consumableItem = rowIsItem ? 0 : PlayerSessionStore::GetConsumableItemIdForDevice(row.device_id);
+	const int    marshalItemId = rowIsItem ? row.item_id : (consumableItem ? consumableItem : row.device_id);
+	const int    blueprintId   =
+		rowIsArmor                    ? ArmorLoadouts::kUniversalArmorBlueprintId :
+		(rowIsItem || row.mods.empty()) ? 0
+		                                : PlayerSessionStore::GetBlueprintIdForDevice(row.device_id, row.oc);
+
+	append(response, 0x0D, 0x00);   // 13 fields
+
+	Write4B(response, GA_T::INV_REPLICATION_STATE, 0x1);
+	Write4B(response, GA_T::ITEM_ID, marshalItemId);
+	Write4B(response, GA_T::INVENTORY_ID, row.inventory_id);
+	Write4B(response, GA_T::BLUEPRINT_ID, blueprintId);
+	Write4B(response, GA_T::CRAFTED_QUALITY_VALUE_ID, row.quality);
+	Write4B(response, GA_T::DURABILITY, 100);
+	WriteDouble(response, GA_T::ACQUIRE_DATETIME, 1700000000.0);
+	WriteString(response, GA_T::BOUND_FLAG, "T");
+	Write4B(response, GA_T::LOCATION_VALUE_ID, 370);   // ON_HAND
+	Write4B(response, GA_T::INSTANCE_COUNT, 0x1);
+	WriteString(response, GA_T::ACTIVE_FLAG, "F");
+	Write4B(response, GA_T::DEVICE_ID, 0);
+
+	std::vector<int> effectGroups = row.mods;
+	if (effectGroups.empty()) effectGroups.push_back(0);
+
+	append(response, GA_T::DATA_SET_INVENTORY_STATE & 0xFF, GA_T::DATA_SET_INVENTORY_STATE >> 8);
+	append(response, (uint8_t)(effectGroups.size() & 0xFF), (uint8_t)(effectGroups.size() >> 8));
+	for (int egid : effectGroups) {
+		append(response, 0x02, 0x00);
+		Write4B(response, GA_T::INVENTORY_ID, row.inventory_id);
+		Write4B(response, GA_T::EFFECT_GROUP_ID, egid);
+	}
+}
+
+void TcpSession::send_inventory_record_to_bag(int nPawnId, int64_t character_id, int inventory_id) {
+	const auto charInfo = PlayerSessionStore::GetCharacterById(character_id);
+	if (!charInfo) return;
+	const auto bag = PlayerSessionStore::GetInventoryForUser(charInfo->user_id, charInfo->profile_id);
+	const InventoryRow* found = nullptr;
+	for (const auto& row : bag) {
+		if (row.inventory_id == inventory_id) { found = &row; break; }
+	}
+	if (!found) {
+		Logger::Log("tcp", "[TCP] send_inventory_record_to_bag: inv=%d not in pool for char=%lld\n",
+			inventory_id, (long long)character_id);
+		return;
+	}
+
+	std::vector<uint8_t> response;
+	append(response, GA_U::SEND_INVENTORY & 0xFF, GA_U::SEND_INVENTORY >> 8);
+	append(response, 0x02, 0x00);   // PAWN_ID + DATA_SET
+	Write4B(response, GA_T::PAWN_ID, nPawnId);
+	append(response, GA_T::DATA_SET & 0xFF, GA_T::DATA_SET >> 8);
+	append(response, 0x02, 0x00);   // 2 records
+	// Delete first: an update alone would keep the stale per-profile slot
+	// binding (see send_inventory_clear).
+	append(response, 0x02, 0x00);
+	Write4B(response, GA_T::INV_REPLICATION_STATE, 0x2);
+	Write4B(response, GA_T::INVENTORY_ID, inventory_id);
+	AppendBagRecord(response, *found);
+	send_response(response);
+	Logger::Log("tcp", "[TCP] send_inventory_record_to_bag: char=%lld pawnId=%d inv=%d\n",
+		(long long)character_id, nPawnId, inventory_id);
 }
 
 void TcpSession::send_inventory_clear(int nPawnId, int64_t character_id) {

@@ -668,6 +668,11 @@ private:
     // user already confirmed fixes the symptom.
     void send_inventory_clear(int nPawnId, int64_t character_id);
 
+    // Single-record version of clear + resend: STATE=2 then the bag-form record
+    // for one inventory row, in one SEND_INVENTORY. Moves an equipped item to the
+    // bag without touching any other record (no count change, no full rebuild).
+    void send_inventory_record_to_bag(int nPawnId, int64_t character_id, int inventory_id);
+
     // Identical wire format to send_inventory_response but pulls the records
     // from an in-memory list (no DB lookup). Used by the -possess chat command
     // to display the bot's loadout in the player's inventory UI.
@@ -718,6 +723,10 @@ private:
     // helpers it uses are instance members.
     void AppendComponentRecord(std::vector<uint8_t>& response,
                                const Database::ComponentRow& comp);
+
+    // One bag-form SEND_INVENTORY record (shared by the full push and
+    // send_inventory_record_to_bag so the two can never drift apart).
+    void AppendBagRecord(std::vector<uint8_t>& response, const InventoryRow& row);
 
     // Components are per-user and stackable, so they have no ga_players_inventory
     // row to borrow an inventory id from. Synthetic ids start here — far above

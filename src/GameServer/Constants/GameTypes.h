@@ -119,6 +119,7 @@ namespace GA_G {
 		TGDT_PLAYER_SENSOR = 393, // beacon slot perhaps?
 		TGDT_MORALE = 476,
 		TGDT_TRAVEL = 806, // jetpack
+		TGDT_CONSUMABLE = 1482, // valid_value group 67 "Consumable" (ES13 devices)
 
 		DEVICE_ID_ASSAULT_CJP = 7031,
 		DEVICE_ID_MEDIC_CJP = 7032,
